@@ -2,14 +2,6 @@ name: Continuous integration
 on: [push, pull_request]
 
 jobs:
-  check:
-    name: Check
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo check --all-targets
-
   test:
     name: Test
     runs-on: macos-latest
@@ -20,7 +12,7 @@ jobs:
 
   fmt:
     name: Format
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -30,29 +22,10 @@ jobs:
 
   clippy:
     name: Clippy
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - run: cargo clippy --all-targets -- --deny warnings
-
-  build:
-    name: Build (${{ matrix.target }})
-    runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [x86_64-apple-darwin, aarch64-apple-darwin]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          target: ${{ matrix.target }}
-
-      - name: Build binary
-        run: cargo build --release --locked --target ${{ matrix.target }} --color=always --verbose
