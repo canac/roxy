@@ -1,0 +1,54 @@
+name: Release
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+jobs:
+  release:
+    name: ${{ matrix.target }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set artifact name
+        shell: bash
+        run: |
+          version="$(git describe --tags --match='v*.*.*' --always)"
+          name="roxy-$version-${{ matrix.target }}"
+          echo "ARTIFACT_NAME=$name" >> $GITHUB_ENV
+
+          echo "version: $version"
+          echo "artifact: $name"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Build binary
+        run: cargo build --release --locked --target ${{ matrix.target }} --color=always --verbose
+
+      - name: Package
+        run: >
+          tar -cv
+          LICENSE README.md
+          -C target/${{ matrix.target }}/release/ roxy
+          | gzip --best > '${{ env.ARTIFACT_NAME }}.tar.gz'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: "*.tar.gz"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: "*.tar.gz"
