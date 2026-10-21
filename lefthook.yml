@@ -1,0 +1,5 @@
+remotes:
+  - git_url: https://github.com/canac/lefthook-configs.git
+    ref: main
+    configs:
+      - configs/rust.yml

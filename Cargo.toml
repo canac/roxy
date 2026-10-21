@@ -1,0 +1,61 @@
+[package]
+name = "roxy"
+version = "0.1.0"
+edition = "2024"
+description = "A scriptable MITM HTTP(S) proxy scripted in JavaScript with web-standard APIs"
+license = "MIT"
+publish = false
+
+[dependencies]
+anyhow = "1"
+async-compression = { version = "0.4", features = ["tokio", "gzip", "zlib", "deflate", "brotli", "zstd"] }
+bytes = "1"
+clap = { version = "4.6", features = ["derive", "env"] }
+deno_core = "0.412.0"
+deno_error = "=0.7.1"
+deno_fetch = "0.283.0"
+deno_permissions = "0.118.0"
+deno_tls = "0.246.0"
+deno_web = "0.290.0"
+deno_webidl = "0.259.0"
+dirs = "6"
+futures = "0.3"
+http = "1"
+http-body = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "http2", "server", "client"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["aws-lc-rs", "http1", "http2", "tls12", "logging"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "server-auto", "http1", "http2", "tokio"] }
+notify = "8.2"
+rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
+rlimit = "0.11.0"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12", "logging"] }
+rustls-native-certs = "0.8"
+serde = { version = "1", features = ["derive"] }
+sys_traits = { version = "0.1.28", features = ["real", "libc"] }
+terminal_size = "0.4"
+thiserror = "2"
+time = "0.3"
+tokio = { version = "1.47", features = ["full"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "tls12", "logging"] }
+tokio-util = { version = "0.7", features = ["io"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+webpki-roots = "1"
+
+[dev-dependencies]
+deno_tls = "0.246.0"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2", "stream"] }
+tempfile = "3"
+flate2 = "1"
+serde_json = "1"
+tokio = { version = "1.47", features = ["full", "test-util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+module_name_repetitions = "allow"
