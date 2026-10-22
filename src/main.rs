@@ -26,7 +26,7 @@ enum Cmd {
     Run {
         /// JavaScript module exporting `onRequest` and/or `onResponse`.
         script: PathBuf,
-        #[arg(short, long, env = "PORT", default_value_t = DEFAULT_PORT)]
+        #[arg(short, long, env = "ROXY_PORT", default_value_t = DEFAULT_PORT)]
         port: u16,
         /// Most hooks allowed to run at once; the rest wait their turn.
         #[arg(long, default_value_t = default_hook_limit())]
@@ -39,7 +39,7 @@ enum Cmd {
     Trust,
     /// Point the system web and secure web proxies at roxy (macOS).
     Register {
-        #[arg(short, long, env = "PORT", default_value_t = DEFAULT_PORT)]
+        #[arg(short, long, env = "ROXY_PORT", default_value_t = DEFAULT_PORT)]
         port: u16,
     },
     /// Turn the system web and secure web proxies off (macOS).

@@ -44,7 +44,7 @@ async fn runs_on_port_from_env_and_logs_metrics_on_shutdown() {
     let port = free_port();
     let child = Command::new(BIN)
         .args(["run", script.to_str().unwrap()])
-        .env("PORT", port.to_string())
+        .env("ROXY_PORT", port.to_string())
         .env("HOME", home.path())
         .env("ROXY_LOG", "info")
         .stdout(Stdio::piped())
@@ -92,7 +92,7 @@ async fn raises_a_low_open_file_limit() {
     let child = Command::new("sh")
         .args(["-c", r#"ulimit -Sn 256 && exec "$0" run "$1""#, BIN])
         .arg(&script)
-        .env("PORT", port.to_string())
+        .env("ROXY_PORT", port.to_string())
         .env("HOME", home.path())
         .env("ROXY_LOG", "roxy=debug")
         .stdout(Stdio::piped())

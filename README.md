@@ -6,7 +6,7 @@ A scriptable man-in-the-middle HTTP(S) proxy, like mitmproxy, scripted in JavaSc
 
 ```sh
 cargo install --path .
-roxy run script.js --port 8080        # or PORT=8080 roxy run script.js
+roxy run script.js --port 8080        # or ROXY_PORT=8080 roxy run script.js
 ```
 
 roxy always binds to `127.0.0.1`. Point a client at it as an HTTP proxy:
@@ -53,7 +53,7 @@ The script and everything it imports reload when they change on disk. A save tha
 
 | Flag | Env | Default |
 | --- | --- | --- |
-| `-p, --port` | `PORT` | `8080` |
+| `-p, --port` | `ROXY_PORT` | `8080` |
 | `--max-concurrent-hooks` | | `256` |
 | `--auto-register` | | off |
 | log filter | `ROXY_LOG` | `info` |
@@ -67,9 +67,9 @@ On first run roxy creates a CA in your per-user data directory (`~/Library/Appli
 macOS only:
 
 ```sh
-roxy trust                        # trust the CA in your login keychain
-roxy register --port 8080         # set the system web + secure web proxy
-roxy unregister                   # clear it
+roxy trust                          # trust the CA in your login keychain
+roxy register --port 8080           # set the system web + secure web proxy
+roxy unregister                     # clear it
 roxy run script.js --auto-register  # register on start, unregister on exit
 ```
 
