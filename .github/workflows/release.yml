@@ -39,6 +39,8 @@ jobs:
         run: >
           tar -cv
           LICENSE README.md
+          man/
+          -C contrib/ completions/ -C ../
           -C target/${{ matrix.target }}/release/ roxy
           | gzip --best > '${{ env.ARTIFACT_NAME }}.tar.gz'
 

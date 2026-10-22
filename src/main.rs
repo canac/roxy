@@ -1,54 +1,18 @@
+mod cli;
+
 use std::io::IsTerminal as _;
-use std::num::NonZeroUsize;
-use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
-use clap::{Parser, Subcommand};
+use clap::Parser as _;
+use cli::{Cli, Cmd};
 use roxy::proxy::{self, Proxy};
 use roxy::{ca, status, system};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 
-const DEFAULT_PORT: u16 = 8080;
-
-#[derive(Parser)]
-#[command(version, about)]
-struct Cli {
-    #[command(subcommand)]
-    command: Cmd,
-}
-
-#[derive(Subcommand)]
-enum Cmd {
-    /// Run the proxy on 127.0.0.1 with a hook script.
-    Run {
-        /// JavaScript module exporting `onRequest` and/or `onResponse`.
-        script: PathBuf,
-        #[arg(short, long, env = "ROXY_PORT", default_value_t = DEFAULT_PORT)]
-        port: u16,
-        /// Most hooks allowed to run at once; the rest wait their turn.
-        #[arg(long, default_value_t = default_hook_limit())]
-        max_concurrent_hooks: NonZeroUsize,
-        /// Set the system proxy on startup and clear it on shutdown (macOS).
-        #[arg(long)]
-        auto_register: bool,
-    },
-    /// Add roxy's CA certificate to the system trust store (macOS).
-    Trust,
-    /// Point the system web and secure web proxies at roxy (macOS).
-    Register {
-        #[arg(short, long, env = "ROXY_PORT", default_value_t = DEFAULT_PORT)]
-        port: u16,
-    },
-    /// Turn the system web and secure web proxies off (macOS).
-    Unregister,
-}
-
-fn default_hook_limit() -> NonZeroUsize {
-    NonZeroUsize::new(proxy::DEFAULT_MAX_CONCURRENT_HOOKS).unwrap_or(NonZeroUsize::MIN)
-}
+const _: () = assert!(cli::DEFAULT_HOOK_LIMIT.get() == proxy::DEFAULT_MAX_CONCURRENT_HOOKS);
 
 fn main() -> ExitCode {
     let live = std::io::stdout().is_terminal();
