@@ -55,7 +55,7 @@ The script and everything it imports reload when they change on disk. A save tha
 | --- | --- | --- |
 | `-p, --port` | `ROXY_PORT` | `8080` |
 | `--max-concurrent-hooks` | | `256` |
-| `--auto-register` | | off |
+| `--auto-register` | | off (macOS, see below) |
 | log filter | `ROXY_LOG` | `info` |
 
 Metrics (requests, responses, time spent in hooks) are logged every minute while there is traffic, and once on shutdown. When stdout is a terminal, they show in a status line pinned to the bottom row, updated every second, instead.
@@ -72,6 +72,8 @@ roxy register --port 8080           # set the system web + secure web proxy
 roxy unregister                     # clear it
 roxy run script.js --auto-register  # register on start, unregister on exit
 ```
+
+Only the first `--auto-register` instance sets the system proxy. Later ones log the `roxy register --port <port>` command to point it at themselves instead. On exit, an instance only clears system proxy settings that still point at its own port. `roxy unregister` always clears the system proxy, which also fixes things after a crash.
 
 ## Development
 

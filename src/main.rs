@@ -1,5 +1,6 @@
 mod cli;
 
+use std::fs::File;
 use std::io::IsTerminal as _;
 use std::process::ExitCode;
 use std::time::Duration;
@@ -91,22 +92,46 @@ async fn run(config: proxy::Config, auto_register: bool) -> Result<()> {
     }
     let proxy = Proxy::start(config).await?;
     let port = proxy.local_addr().port();
-    if auto_register {
-        if let Err(e) = system::register(port) {
-            proxy.shutdown().await;
-            return Err(e);
+    let lock = if auto_register {
+        match claim_system_proxy(port) {
+            Ok(lock) => lock,
+            Err(e) => {
+                proxy.shutdown().await;
+                return Err(e);
+            }
         }
-        tracing::info!("system proxy set to 127.0.0.1:{port}");
-    }
+    } else {
+        None
+    };
     shutdown_signal().await;
     tracing::info!("shutting down");
     let unregistered = if auto_register {
-        system::unregister().inspect(|()| tracing::info!("system proxy cleared"))
+        system::unregister_if_ours(port).map(|cleared| {
+            if cleared > 0 {
+                tracing::info!("system proxy cleared");
+            }
+        })
     } else {
         Ok(())
     };
+    drop(lock); // release only after cleanup, so a new owner can't race our clear
     proxy.shutdown().await;
     unregistered
+}
+
+/// Registers the system proxy if no other `--auto-register` instance owns it.
+fn claim_system_proxy(port: u16) -> Result<Option<File>> {
+    let lock = system::try_lock_registration(&ca::default_dir()?)?;
+    if lock.is_some() {
+        system::register(port)?;
+        tracing::info!("system proxy set to 127.0.0.1:{port}");
+    } else {
+        tracing::warn!(
+            "another roxy instance is auto-registered; \
+             run `roxy register --port {port}` to register this instance"
+        );
+    }
+    Ok(lock)
 }
 
 async fn redraw_on_resize() {
