@@ -1,12 +1,8 @@
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
 pub const DEFAULT_PORT: u16 = 8080;
-
-/// Must equal `roxy::proxy::DEFAULT_MAX_CONCURRENT_HOOKS`; build.rs can't reach the library.
-pub const DEFAULT_HOOK_LIMIT: NonZeroUsize = NonZeroUsize::new(256).expect("nonzero");
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -24,9 +20,6 @@ pub enum Cmd {
         /// Port to listen on.
         #[arg(short, long, env = "ROXY_PORT", default_value_t = DEFAULT_PORT)]
         port: u16,
-        /// Most hooks allowed to run at once; the rest wait their turn.
-        #[arg(long, default_value_t = DEFAULT_HOOK_LIMIT)]
-        max_concurrent_hooks: NonZeroUsize,
         /// Set the system proxy on startup and clear it on shutdown (macOS).
         #[arg(long)]
         auto_register: bool,

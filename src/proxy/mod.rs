@@ -23,14 +23,14 @@ use crate::metrics::{Metrics, Snapshot};
 use crate::status;
 use handler::{Ctx, Origin};
 
-pub const DEFAULT_MAX_CONCURRENT_HOOKS: usize = 256;
+/// Most hooks allowed to run at once; the rest wait their turn.
+const MAX_CONCURRENT_HOOKS: usize = 256;
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub script: PathBuf,
     /// Port on 127.0.0.1; 0 picks a free one.
     pub port: u16,
-    pub max_concurrent_hooks: usize,
     /// Where the CA lives; `None` means the per-user default.
     pub ca_dir: Option<PathBuf>,
     /// Additional trusted roots for upstream TLS and `fetch()`.
@@ -49,7 +49,6 @@ impl Config {
         Self {
             script: script.into(),
             port,
-            max_concurrent_hooks: DEFAULT_MAX_CONCURRENT_HOOKS,
             ca_dir: None,
             extra_roots: Vec::new(),
             metrics_interval: Duration::from_secs(60),
@@ -108,7 +107,7 @@ impl Proxy {
             client: upstream::client(Arc::clone(&roots)),
             upgrade_client: upstream::h1_client(roots),
             metrics: Arc::clone(&metrics),
-            hook_slots: Semaphore::new(config.max_concurrent_hooks.max(1)),
+            hook_slots: Semaphore::new(MAX_CONCURRENT_HOOKS),
             ca,
         });
         let cancel = CancellationToken::new();

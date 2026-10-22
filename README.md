@@ -54,7 +54,6 @@ The script and everything it imports reload when they change on disk. A save tha
 | Flag | Env | Default |
 | --- | --- | --- |
 | `-p, --port` | `ROXY_PORT` | `8080` |
-| `--max-concurrent-hooks` | | `256` |
 | `--auto-register` | | off (macOS, see below) |
 | log filter | `ROXY_LOG` | `info` |
 

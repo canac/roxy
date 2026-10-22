@@ -381,30 +381,6 @@ async fn hooks_run_in_parallel_and_errors_are_isolated() {
 }
 
 #[tokio::test]
-async fn concurrent_hook_limit_is_enforced() {
-    let up = upstream().await;
-    let script =
-        "export async function onRequest() { await new Promise((r) => setTimeout(r, 200)); }";
-    let h = start(script, &[], |c| c.max_concurrent_hooks = 1).await;
-    let client = h.client();
-    let started = Instant::now();
-    let tasks: Vec<_> = (0..3)
-        .map(|_| {
-            let (client, url) = (client.clone(), up.url("/echo"));
-            tokio::spawn(async move { client.get(url).send().await.unwrap().status() })
-        })
-        .collect();
-    for task in tasks {
-        assert_eq!(task.await.unwrap(), 200);
-    }
-    assert!(
-        started.elapsed() >= Duration::from_millis(600),
-        "{:?}",
-        started.elapsed()
-    );
-}
-
-#[tokio::test]
 async fn metrics_count_traffic_and_hook_time_only() {
     let up = upstream().await;
     let script = r#"

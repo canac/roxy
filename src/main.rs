@@ -13,8 +13,6 @@ use roxy::{ca, status, system};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 
-const _: () = assert!(cli::DEFAULT_HOOK_LIMIT.get() == proxy::DEFAULT_MAX_CONCURRENT_HOOKS);
-
 fn main() -> ExitCode {
     let live = std::io::stdout().is_terminal();
     let writer = if live {
@@ -42,11 +40,9 @@ fn dispatch(command: Cmd, live: bool) -> Result<()> {
         Cmd::Run {
             script,
             port,
-            max_concurrent_hooks,
             auto_register,
         } => {
             let mut config = proxy::Config::new(script, port);
-            config.max_concurrent_hooks = max_concurrent_hooks.get();
             if live {
                 config.live_metrics = true;
                 config.metrics_interval = Duration::from_secs(1);
