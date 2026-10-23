@@ -22,7 +22,9 @@ use futures::FutureExt as _;
 use tokio::sync::{mpsc, oneshot};
 
 use super::loader::ScriptLoader;
-use super::ops::{HostState, net_stub, roxy_ext};
+use super::net_stub::deno_net;
+use super::ops::{HostState, roxy_ext};
+use super::snapshot::{RESIDUAL_LAZY_ESM, RESIDUAL_LAZY_JS, SNAPSHOT};
 use super::{HookFlags, Job};
 
 pub struct WorkerConfig {
@@ -227,6 +229,10 @@ async fn load(
     };
     let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(Rc::new(ScriptLoader::new(files))),
+        startup_snapshot: Some(SNAPSHOT),
+        residual_lazy_js_sources: RESIDUAL_LAZY_JS,
+        residual_lazy_esm_sources: RESIDUAL_LAZY_ESM,
+        // Must match `snapshot_extensions` in build.rs.
         extensions: vec![
             deno_webidl::deno_webidl::init(),
             deno_web::deno_web::init(
@@ -235,7 +241,7 @@ async fn load(
                 false,
                 deno_web::InMemoryBroadcastChannel::default(),
             ),
-            net_stub::init(),
+            deno_net::init(),
             deno_fetch::deno_fetch::init(fetch_options),
             roxy_ext::init(host),
         ],
@@ -294,6 +300,10 @@ impl Watchdog {
 }
 
 async fn evaluate(config: &WorkerConfig, runtime: &mut JsRuntime) -> Result<()> {
+    runtime.execute_script(
+        "roxy:bootstrap",
+        "{\nconst key = Symbol.for(\"roxy.bootstrap\");\nconst bootstrap = globalThis[key];\ndelete globalThis[key];\nbootstrap();\n}\n",
+    )?;
     let path = std::path::absolute(&config.script)
         .with_context(|| format!("resolving {}", config.script.display()))?;
     let main = ModuleSpecifier::from_file_path(&path)

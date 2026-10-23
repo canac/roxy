@@ -17,7 +17,6 @@ use deno_core::{JsBuffer, OpState, op2};
 use deno_error::JsErrorBox;
 use tokio::sync::{mpsc, oneshot};
 
-pub use self::deno_net as net_stub;
 use super::{
     BodyOut, HookFlags, HookMessage, Job, JobPayload, Outcome, RequestPayload, WireResult,
 };
@@ -286,12 +285,6 @@ pub fn op_roxy_log(#[smi] level: i32, #[string] message: &str) {
     }
 }
 
-// deno_fetch lazily imports this script even though only Deno.createHttpClient uses it.
-deno_core::extension!(
-    deno_net,
-    lazy_loaded_js = [dir "src/engine/stubs", "02_tls.js"],
-);
-
 deno_core::extension!(
     roxy_ext,
     deps = [deno_webidl, deno_web, deno_net, deno_fetch],
@@ -306,8 +299,6 @@ deno_core::extension!(
         op_roxy_ready,
         op_roxy_log,
     ],
-    esm_entry_point = "ext:roxy_ext/runtime.js",
-    esm = [dir "src/engine", "runtime.js"],
     options = { host: HostState },
     state = |state, options| {
         state.put(options.host);

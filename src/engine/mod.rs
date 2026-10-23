@@ -1,7 +1,9 @@
 //! The JavaScript engine: runs user hooks in a V8 isolate and live-reloads the script.
 
 mod loader;
+mod net_stub;
 mod ops;
+mod snapshot;
 mod worker;
 
 use std::path::PathBuf;

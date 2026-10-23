@@ -1,17 +1,8 @@
 // Bootstraps web globals and runs the hook job loop inside the isolate.
 import { core, internals } from "ext:core/mod.js";
 
-const {
-  op_roxy_body_read,
-  op_roxy_complete,
-  op_roxy_job_done,
-  op_roxy_log,
-  op_roxy_next_job,
-  op_roxy_ready,
-  op_roxy_sink_close,
-  op_roxy_sink_open,
-  op_roxy_sink_write,
-} = core.ops;
+// This module is evaluated into the startup snapshot, where roxy's ops are not registered yet.
+const ops = core.ops;
 
 const load = (name) => core.loadExtScript(name);
 
@@ -60,7 +51,7 @@ const { ReadableStream } = streams;
 const LEVELS = { debug: 0, log: 1, warn: 2, error: 3 };
 
 function log(level, message) {
-  op_roxy_log(level, message);
+  ops.op_roxy_log(level, message);
 }
 
 function expose(values) {
@@ -77,10 +68,9 @@ function expose(values) {
 // tracing escapes ANSI codes, so colored inspect output would show up as literal "\x1b[33m".
 console_.setNoColorFns(() => true, () => true);
 const consoleImpl = new console_.Console((msg, level) => {
-  op_roxy_log(level, msg.endsWith("\n") ? msg.slice(0, -1) : msg);
+  ops.op_roxy_log(level, msg.endsWith("\n") ? msg.slice(0, -1) : msg);
 });
 
-performance.setTimeOrigin();
 event.saveGlobalThisReference(globalThis);
 
 expose({
@@ -138,13 +128,17 @@ function describe(err) {
   }
 }
 
-core.setUnhandledPromiseRejectionHandler((_promise, reason) => {
-  log(LEVELS.error, `unhandled promise rejection in script: ${describe(reason)}`);
-  return true;
-});
-core.setReportExceptionCallback((err) => {
-  log(LEVELS.error, `uncaught exception in script: ${describe(err)}`);
-});
+// Runs in each isolate before the script loads, since the snapshot can't carry these.
+function bootstrap() {
+  performance.setTimeOrigin();
+  core.setUnhandledPromiseRejectionHandler((_promise, reason) => {
+    log(LEVELS.error, `unhandled promise rejection in script: ${describe(reason)}`);
+    return true;
+  });
+  core.setReportExceptionCallback((err) => {
+    log(LEVELS.error, `uncaught exception in script: ${describe(err)}`);
+  });
+}
 
 let hooks = { onRequest: undefined, onResponse: undefined };
 
@@ -154,7 +148,7 @@ function lazyBody(id) {
   return new ReadableStream(
     {
       async pull(controller) {
-        const chunk = await op_roxy_body_read(id);
+        const chunk = await ops.op_roxy_body_read(id);
         if (chunk === null) {
           controller.close();
         } else {
@@ -189,23 +183,23 @@ function bodyWire(inner, owner, lazy, passed) {
   }
   const fixed = staticBytes(body.streamOrStatic);
   const length = fixed?.byteLength ?? (typeof body.length === "number" ? body.length : null);
-  const id = op_roxy_sink_open(length);
+  const id = ops.op_roxy_sink_open(length);
   const stream = fixed === null ? owner.body : null;
   const pump = async () => {
     try {
       if (fixed !== null) {
-        if (fixed.byteLength > 0) await op_roxy_sink_write(id, fixed);
+        if (fixed.byteLength > 0) await ops.op_roxy_sink_write(id, fixed);
       } else {
         const reader = stream.getReader();
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          if (value.byteLength > 0) await op_roxy_sink_write(id, value);
+          if (value.byteLength > 0) await ops.op_roxy_sink_write(id, value);
         }
       }
-      op_roxy_sink_close(id, null);
+      ops.op_roxy_sink_close(id, null);
     } catch (err) {
-      op_roxy_sink_close(id, describe(err));
+      ops.op_roxy_sink_close(id, describe(err));
     }
   };
   return { wire: { kind: "sink", id, length }, pump };
@@ -287,18 +281,18 @@ async function handle(job) {
     } catch (err) {
       result = { wire: { action: "error", error: describe(err) } };
     }
-    op_roxy_complete(job.id, result.wire);
+    ops.op_roxy_complete(job.id, result.wire);
     if (result.pump) await result.pump();
   } catch (err) {
     log(LEVELS.error, `internal hook error: ${describe(err)}`);
   } finally {
-    op_roxy_job_done(job.id);
+    ops.op_roxy_job_done(job.id);
   }
 }
 
 async function jobLoop() {
   while (true) {
-    const job = await op_roxy_next_job();
+    const job = await ops.op_roxy_next_job();
     if (job === null) return;
     handle(job);
   }
@@ -308,17 +302,19 @@ function start(mod) {
   const { onRequest, onResponse } = mod;
   for (const [name, hook] of [["onRequest", onRequest], ["onResponse", onResponse]]) {
     if (hook !== undefined && typeof hook !== "function") {
-      op_roxy_ready(false, false, `export ${name} must be a function, got ${kindOf(hook)}`);
+      ops.op_roxy_ready(false, false, `export ${name} must be a function, got ${kindOf(hook)}`);
       return;
     }
   }
   hooks = { onRequest, onResponse };
-  op_roxy_ready(onRequest !== undefined, onResponse !== undefined, null);
+  ops.op_roxy_ready(onRequest !== undefined, onResponse !== undefined, null);
   jobLoop();
 }
 
-Object.defineProperty(globalThis, Symbol.for("roxy.start"), {
-  value: start,
-  configurable: true,
-  enumerable: false,
-});
+for (const [name, value] of [["roxy.bootstrap", bootstrap], ["roxy.start", start]]) {
+  Object.defineProperty(globalThis, Symbol.for(name), {
+    value,
+    configurable: true,
+    enumerable: false,
+  });
+}
