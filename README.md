@@ -77,6 +77,14 @@ Registering also adds `localhost`, `*.localhost`, `127.0.0.1` and `::1` to the p
 
 Only the first `--auto-register` instance sets the system proxy. Later ones log the `roxy register --port <port>` command to point it at themselves instead. On exit, an instance only clears system proxy settings that still point at its own port. `roxy unregister` always clears the system proxy, which also fixes things after a crash.
 
+## Agent Skills
+
+roxy ships a skill that teaches coding agents to write and run roxy scripts:
+
+```sh
+npx skills add canac/roxy
+```
+
 ## Development
 
 ```sh
