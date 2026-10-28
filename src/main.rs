@@ -62,12 +62,12 @@ fn dispatch(command: Cmd, live: bool) -> Result<()> {
             Ok(())
         }
         Cmd::Register { port } => {
-            system::register(port)?;
+            system::register(port, &ca::default_dir()?)?;
             tracing::info!("system proxy set to 127.0.0.1:{port}");
             Ok(())
         }
         Cmd::Unregister => {
-            system::unregister()?;
+            system::unregister(&ca::default_dir()?)?;
             tracing::info!("system proxy cleared");
             Ok(())
         }
@@ -102,11 +102,13 @@ async fn run(config: proxy::Config, auto_register: bool) -> Result<()> {
     shutdown_signal().await;
     tracing::info!("shutting down");
     let unregistered = if auto_register {
-        system::unregister_if_ours(port).map(|cleared| {
-            if cleared > 0 {
-                tracing::info!("system proxy cleared");
-            }
-        })
+        ca::default_dir()
+            .and_then(|dir| system::unregister_if_ours(port, &dir))
+            .map(|cleared| {
+                if cleared > 0 {
+                    tracing::info!("system proxy cleared");
+                }
+            })
     } else {
         Ok(())
     };
@@ -117,9 +119,10 @@ async fn run(config: proxy::Config, auto_register: bool) -> Result<()> {
 
 /// Registers the system proxy if no other `--auto-register` instance owns it.
 fn claim_system_proxy(port: u16) -> Result<Option<File>> {
-    let lock = system::try_lock_registration(&ca::default_dir()?)?;
+    let dir = ca::default_dir()?;
+    let lock = system::try_lock_registration(&dir)?;
     if lock.is_some() {
-        system::register(port)?;
+        system::register(port, &dir)?;
         tracing::info!("system proxy set to 127.0.0.1:{port}");
     } else {
         tracing::warn!(

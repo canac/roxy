@@ -1,6 +1,7 @@
 //! Per-request flow: run hooks, talk to the upstream, and fail open on hook errors.
 
 use std::convert::Infallible;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -22,6 +23,8 @@ use crate::engine::{BodyOut, Engine, HookMessage, Job, Outcome, RequestView};
 use crate::metrics::Metrics;
 
 pub struct Ctx {
+    /// Where roxy listens, so requests aimed back at it can be refused.
+    pub listen: SocketAddr,
     pub engine: Engine,
     pub client: UpstreamClient,
     pub upgrade_client: UpstreamClient,
@@ -92,6 +95,20 @@ fn target_url(origin: &Origin, parts: &http::request::Parts) -> Result<Uri, Stri
                 .map_err(|e| format!("invalid request target: {e}"))
         }
     }
+}
+
+/// Whether `url` reaches roxy's own listener, which would only proxy the request to itself.
+fn targets_self(url: &Uri, listen: SocketAddr) -> bool {
+    let default = if url.scheme_str() == Some("https") {
+        443
+    } else {
+        80
+    };
+    if url.port_u16().unwrap_or(default) != listen.port() {
+        return false;
+    }
+    let host = url.host().unwrap_or_default();
+    host.eq_ignore_ascii_case("localhost") || host.parse::<IpAddr>() == Ok(listen.ip())
 }
 
 fn without_default_port(scheme: &str, authority: &http::uri::Authority) -> String {
@@ -265,7 +282,7 @@ async fn proxy(ctx: &Ctx, origin: &Origin, req: Request<Incoming>) -> Response<B
                 }
                 None => &ctx.client,
             };
-            match send_upstream(client, outgoing).await {
+            match send_upstream(client, outgoing, ctx.listen).await {
                 Err(failed) => *failed,
                 Ok(res) if res.status() == StatusCode::SWITCHING_PROTOCOLS && upgrade.is_some() => {
                     let (_, downstream) = upgrade.expect("checked above");
@@ -375,8 +392,14 @@ fn switch_protocols(downstream: OnUpgrade, mut res: Response<Incoming>) -> Respo
 async fn send_upstream(
     client: &UpstreamClient,
     outgoing: Outgoing,
+    listen: SocketAddr,
 ) -> Result<Response<Incoming>, Box<Response<Body>>> {
     let target = outgoing.url.to_string();
+    if targets_self(&outgoing.url, listen) {
+        let message = format!("refusing to proxy {target} to roxy itself");
+        tracing::warn!("{message}");
+        return Err(Box::new(text(StatusCode::LOOP_DETECTED, &message)));
+    }
     let mut upstream = Request::new(outgoing.body);
     *upstream.method_mut() = outgoing.method;
     *upstream.uri_mut() = outgoing.url;
@@ -566,6 +589,25 @@ mod tests {
         assert_eq!(status_from(Some(150.0)), StatusCode::BAD_GATEWAY);
         assert_eq!(status_from(Some(200.5)), StatusCode::BAD_GATEWAY);
         assert_eq!(status_from(None), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn detects_urls_aimed_at_roxy_itself() {
+        let listen: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        let aimed = |url: &str| targets_self(&url.parse().unwrap(), listen);
+        assert!(aimed("http://localhost:8080/v1/models"));
+        assert!(aimed("http://LocalHost:8080/"));
+        assert!(aimed("https://127.0.0.1:8080/"));
+        assert!(!aimed("http://localhost:8081/"));
+        assert!(!aimed("http://localhost/"));
+        assert!(!aimed("http://[::1]:8080/"));
+        assert!(!aimed("http://example.com:8080/"));
+        let listen: SocketAddr = "127.0.0.1:80".parse().unwrap();
+        assert!(targets_self(&"http://localhost/".parse().unwrap(), listen));
+        assert!(!targets_self(
+            &"https://localhost/".parse().unwrap(),
+            listen
+        ));
     }
 
     #[test]

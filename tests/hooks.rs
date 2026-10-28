@@ -652,6 +652,20 @@ async fn unreadable_body_after_a_failed_read_is_a_502() {
 }
 
 #[tokio::test]
+async fn requests_aimed_at_roxy_itself_are_refused() {
+    let h = start("export function onRequest() {}", &[], |_| {}).await;
+    let port = h.proxy.local_addr().port();
+    for url in [
+        format!("http://localhost:{port}/v1/models"),
+        format!("http://127.0.0.1:{port}/"),
+    ] {
+        let res = h.client().get(&url).send().await.unwrap();
+        assert_eq!(res.status(), 508, "{url}");
+        assert!(res.text().await.unwrap().contains("roxy itself"));
+    }
+}
+
+#[tokio::test]
 async fn bodyless_304_has_no_content_length() {
     let up = upstream().await;
     let script = "export function onResponse() { return new Response(null, { status: 304 }); }";

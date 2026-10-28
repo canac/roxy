@@ -103,6 +103,7 @@ impl Proxy {
         let addr = listener.local_addr()?;
         let metrics = Arc::new(Metrics::default());
         let ctx = Arc::new(Ctx {
+            listen: addr,
             engine,
             client: upstream::client(Arc::clone(&roots)),
             upgrade_client: upstream::h1_client(roots),
