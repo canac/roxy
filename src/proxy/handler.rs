@@ -5,7 +5,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Instant;
 
-use http::header::{self, HeaderMap, HeaderValue};
+use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request, Response, StatusCode, Uri, Version};
 use http_body::Body as _;
 use hyper::body::Incoming;
@@ -186,6 +186,35 @@ async fn resolve_body(
 fn drop_inherited_encoding(headers: &mut HeaderMap, original: Option<&HeaderValue>) {
     if original.is_some() && headers.get(header::CONTENT_ENCODING) == original {
         hdrs::remove(headers, &header::CONTENT_ENCODING);
+    }
+}
+
+/// Headers that would let a client cache a reply and stop asking roxy for it.
+const CACHING: [HeaderName; 5] = [
+    header::CACHE_CONTROL,
+    header::ETAG,
+    header::LAST_MODIFIED,
+    header::EXPIRES,
+    header::AGE,
+];
+
+/// A faked status or body must not be cached under the upstream's caching headers, so
+/// those copied over unchanged are dropped. Ones the hook set itself are kept. Without a
+/// `Cache-Control` from the hook, `no-store` is added.
+fn forbid_caching(headers: &mut HeaderMap, original: &HeaderMap) {
+    for name in &CACHING {
+        let copied = original.contains_key(name)
+            && headers
+                .get_all(name)
+                .iter()
+                .eq(original.get_all(name).iter());
+        if copied {
+            hdrs::remove(headers, name);
+        }
+    }
+    // Browsers cache a 300, 301, 308 or 410 with no Cache-Control forever.
+    if !headers.contains_key(header::CACHE_CONTROL) {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
 }
 
@@ -464,7 +493,7 @@ async fn response_phase(
     let error = match outcome {
         Outcome::Respond(msg) => {
             let head = method == Method::HEAD;
-            let given = Some(&parts.headers);
+            let given = Some((parts.status, &parts.headers));
             return response_from(msg, given, Pending::Slot(slot), encoding.as_ref(), head).await;
         }
         Outcome::Continue(_) => "onResponse returned a request".to_owned(),
@@ -552,18 +581,22 @@ async fn outgoing_from(
     Ok((out, sent))
 }
 
-/// `given` is the response the hook was handed, if any, whose header layout is kept.
+/// Builds the reply a hook returned. `given` is the upstream status and headers that
+/// `onResponse` saw, or `None` when `onRequest` replied directly.
 async fn response_from(
     msg: HookMessage,
-    given: Option<&HeaderMap>,
+    given: Option<(StatusCode, &HeaderMap)>,
     original: Pending,
     encoding: Option<&HeaderValue>,
     head: bool,
 ) -> Response<Body> {
     let status = status_from(msg.status);
     let mut headers = from_pairs(&msg.headers);
-    if let Some(given) = given {
+    if let Some((given_status, given)) = given {
         headers = restore_layout(&headers, given);
+        if status != given_status || !matches!(msg.body, BodyOut::Original) {
+            forbid_caching(&mut headers, given);
+        }
     }
     strip_hop_by_hop(&mut headers);
     let mut choice = msg.body;

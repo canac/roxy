@@ -666,6 +666,62 @@ async fn requests_aimed_at_roxy_itself_are_refused() {
 }
 
 #[tokio::test]
+async fn new_body_with_copied_headers_drops_stale_encoding_and_length() {
+    let up = upstream().await;
+    let script = r#"
+        export function onResponse(_req, res) {
+          return new Response("{}", { status: 300, headers: new Headers(res.headers) });
+        }
+    "#;
+    let h = start(script, &[], |_| {}).await;
+    let res = h.client().get(up.url("/gzip")).send().await.unwrap();
+    assert_eq!(res.status(), 300);
+    assert!(res.headers().get("content-encoding").is_none());
+    assert_eq!(res.headers()["content-length"], "2");
+    assert_eq!(res.text().await.unwrap(), "{}");
+}
+
+#[tokio::test]
+async fn faked_responses_are_not_cacheable() {
+    let up = upstream().await;
+    let script = r#"
+        export function onResponse(req, res) {
+          const headers = new Headers(res.headers);
+          const path = new URL(req.url).pathname;
+          if (path === "/cached/status") return new Response(res.body, { status: 500, headers });
+          if (path === "/cached/body") return new Response("fake", { headers });
+          if (path === "/cached/bare") return new Response(null, { status: 301 });
+          if (path === "/cached/own") {
+            headers.set("cache-control", "max-age=60");
+            return new Response("fake", { headers });
+          }
+          headers.set("x-touched", "1");
+          return new Response(res.body, { status: res.status, headers });
+        }
+    "#;
+    let h = start(script, &[], |_| {}).await;
+    let caching = ["cache-control", "etag", "last-modified", "expires", "age"];
+    for path in ["/cached/status", "/cached/body", "/cached/bare"] {
+        let res = h.client().get(up.url(path)).send().await.unwrap();
+        assert_eq!(res.headers()["cache-control"], "no-store", "{path}");
+        for name in caching.into_iter().skip(1) {
+            assert!(res.headers().get(name).is_none(), "{path} kept {name}");
+        }
+    }
+    let res = h.client().get(up.url("/cached/own")).send().await.unwrap();
+    assert_eq!(res.headers()["cache-control"], "max-age=60");
+    assert!(res.headers().get("etag").is_none());
+    let res = h.client().get(up.url("/cached")).send().await.unwrap();
+    assert_eq!(res.headers()["x-touched"], "1");
+    for name in caching {
+        assert!(
+            res.headers().get(name).is_some(),
+            "untouched reply lost {name}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn bodyless_304_has_no_content_length() {
     let up = upstream().await;
     let script = "export function onResponse() { return new Response(null, { status: 304 }); }";

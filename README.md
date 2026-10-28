@@ -43,6 +43,7 @@ export async function onResponse(req, res) {
 - `onResponse` may return a `Response`. Its `req` has the body that went upstream, but only if `onRequest` read or replaced it and it is at most 4 MiB.
 - roxy keeps at most 4 MiB of what a hook reads. A hook that reads more of a body and then returns it unchanged (or throws) gets a 502, since roxy can no longer forward the original. Return a new `Request`/`Response` built from what you read instead.
 - Bodies a hook never reads are streamed through untouched, still encoded.
+- If `onResponse` changes the status or body, caching headers copied from `res.headers` are dropped and `Cache-Control: no-store` is added so the client doesn't cache the fake. Set your own `Cache-Control` to keep caching.
 - If a hook throws or returns something invalid, roxy logs it and passes the original traffic through.
 - WebSocket and other protocol upgrades pass through: `onRequest` sees the handshake, then roxy relays the raw bytes.
 - Hooks run concurrently and can use `fetch()`, timers, streams, `URL`, `TextEncoder`, `Blob`, `FormData`, `console`, and more.

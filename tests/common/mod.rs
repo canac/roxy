@@ -122,6 +122,14 @@ async fn route(mut req: Request<Incoming>, release: Arc<Notify>) -> Response<Bod
             .header("content-encoding", "gzip")
             .body(body::full("this is not gzip"))
             .unwrap(),
+        p if p.starts_with("/cached") => Response::builder()
+            .header("cache-control", "max-age=3600")
+            .header("etag", "\"v1\"")
+            .header("last-modified", "Wed, 21 Oct 2015 07:28:00 GMT")
+            .header("expires", "Thu, 01 Jan 2099 00:00:00 GMT")
+            .header("age", "5")
+            .body(body::full("cached"))
+            .unwrap(),
         "/cookies" => Response::builder()
             .header("set-cookie", COOKIES[0])
             .header("set-cookie", COOKIES[1])
