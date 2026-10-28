@@ -19,28 +19,28 @@ deno_tls = "0.246.0"
 deno_web = "0.290.0"
 deno_webidl = "0.259.0"
 dirs = "6"
-futures = "0.3"
+futures = { version = "0.3", default-features = false, features = ["async-await", "std"] }
 http = "1"
 http-body = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "http2", "server", "client"] }
-hyper-rustls = { version = "0.27", default-features = false, features = ["aws-lc-rs", "http1", "http2", "tls12", "logging"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["aws-lc-rs", "http1", "http2", "tls12"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "server-auto", "http1", "http2", "tokio"] }
 notify = "8.2"
-rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem", "x509-parser"] }
 rlimit = "0.11.0"
-rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12", "logging"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
 rustls-native-certs = "0.8"
 serde = { version = "1", features = ["derive"] }
 sys_traits = { version = "0.1.28", features = ["real", "libc"] }
 terminal_size = "0.4"
 thiserror = "2"
 time = "0.3"
-tokio = { version = "1.47", features = ["full"] }
-tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "tls12", "logging"] }
+tokio = { version = "1.47", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "tls12"] }
 tokio-util = { version = "0.7", features = ["io"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "std"] }
 webpki-roots = "1"
 
 [build-dependencies]
