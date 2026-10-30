@@ -1,15 +1,12 @@
 #![allow(clippy::unwrap_used)]
 
-#[cfg(unix)]
 mod common;
 
-use std::process::Command;
-#[cfg(unix)]
-use std::{process::Stdio, time::Duration};
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
 const BIN: &str = env!("CARGO_BIN_EXE_roxy");
 
-#[cfg(unix)]
 fn free_port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -32,6 +29,41 @@ fn help_lists_every_subcommand() {
     for cmd in ["run", "trust", "register", "unregister"] {
         assert!(help.contains(cmd), "{help}");
     }
+}
+
+#[tokio::test]
+async fn proxies_a_request_through_a_hook() {
+    let up = common::upstream().await;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("hook.js");
+    std::fs::write(
+        &script,
+        "export function onResponse(_req, r) { r.headers.set('x-smoke', '1'); }",
+    )
+    .unwrap();
+    let port = free_port();
+    let mut child = Command::new(BIN)
+        .args(["run", script.to_str().unwrap(), "--port", &port.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let client = reqwest::Client::builder()
+        .proxy(reqwest::Proxy::http(format!("http://127.0.0.1:{port}")).unwrap())
+        .build()
+        .unwrap();
+    let url = up.url("/echo");
+    let ok = common::eventually(Duration::from_secs(10), || async {
+        client
+            .get(&url)
+            .send()
+            .await
+            .is_ok_and(|r| r.headers().contains_key("x-smoke"))
+    })
+    .await;
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(ok);
 }
 
 #[cfg(unix)]
