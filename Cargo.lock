@@ -3419,8 +3419,10 @@ version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7a35f11f9773f11930a7d1e6276766f1577400ee2530b7f0cf3844c2dcbf12b"
 dependencies = [
+ "junction",
  "libc",
  "sys_traits_macros",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

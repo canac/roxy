@@ -24,7 +24,7 @@ pub enum Cmd {
         #[arg(long)]
         auto_register: bool,
     },
-    /// Add roxy's CA certificate to the system trust store (macOS).
+    /// Add roxy's CA certificate to the system trust store.
     Trust,
     /// Point the system web and secure web proxies at roxy (macOS).
     Register {

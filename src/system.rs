@@ -1,4 +1,5 @@
-//! macOS integration: trusting the CA and pointing the system web proxies at roxy.
+//! System integration: trusting the CA on macOS, Linux and Windows, and pointing the macOS
+//! system web proxies at roxy.
 
 use std::ffi::OsString;
 use std::fs::{self, File, TryLockError};
@@ -24,6 +25,19 @@ impl Invocation {
             program,
             args: args.into_iter().map(Into::into).collect(),
         }
+    }
+
+    /// Runs `program` as root, through `sudo` unless `root` says roxy already is.
+    fn elevated<I, S>(root: bool, program: &'static str, args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<OsString>,
+    {
+        let inv = Self::new(program, args);
+        if root {
+            return inv;
+        }
+        Self::new("sudo", std::iter::once(program.into()).chain(inv.args))
     }
 
     fn run(&self) -> Result<String> {
@@ -62,7 +76,7 @@ pub fn login_keychain() -> Result<PathBuf> {
         .context("could not determine the home directory")
 }
 
-/// Marks `cert` as a trusted root for the current user.
+/// Marks `cert` as a trusted root for the current macOS user.
 #[must_use]
 pub fn trust_invocation(cert: &Path, keychain: &Path) -> Invocation {
     Invocation::new(
@@ -76,6 +90,130 @@ pub fn trust_invocation(cert: &Path, keychain: &Path) -> Invocation {
             cert.into(),
         ],
     )
+}
+
+/// Adds `cert` to the current Windows user's trusted root store, which needs no admin rights.
+#[must_use]
+pub fn windows_trust_invocation(cert: &Path) -> Invocation {
+    Invocation::new(
+        "certutil",
+        [
+            OsString::from("-user"),
+            "-addstore".into(),
+            "Root".into(),
+            cert.into(),
+        ],
+    )
+}
+
+/// A Linux distribution's system CA store.
+#[derive(Debug, PartialEq, Eq)]
+pub struct LinuxStore {
+    /// Directory of extra trusted roots.
+    pub anchors: &'static str,
+    /// Name to give the certificate in `anchors`, with the extension the update command expects.
+    pub file_name: &'static str,
+    /// Command that rebuilds the system bundle from `anchors`.
+    pub update: (&'static str, &'static [&'static str]),
+}
+
+/// Known Linux CA stores, in the order they are probed.
+pub const LINUX_STORES: [LinuxStore; 3] = [
+    LinuxStore {
+        anchors: "/etc/pki/ca-trust/source/anchors",
+        file_name: "roxy.pem",
+        update: ("update-ca-trust", &["extract"]),
+    },
+    LinuxStore {
+        anchors: "/usr/local/share/ca-certificates",
+        file_name: "roxy.crt",
+        update: ("update-ca-certificates", &[]),
+    },
+    LinuxStore {
+        anchors: "/etc/ca-certificates/trust-source/anchors",
+        file_name: "roxy.crt",
+        update: ("trust", &["extract-compat"]),
+    },
+];
+
+/// The first of [`LINUX_STORES`] whose anchors directory `exists`.
+#[must_use]
+pub fn linux_store(exists: impl Fn(&Path) -> bool) -> Option<&'static LinuxStore> {
+    LINUX_STORES
+        .iter()
+        .find(|store| exists(Path::new(store.anchors)))
+}
+
+/// Copies `cert` into `store` and rebuilds the system bundle, through `sudo` unless `root`.
+#[must_use]
+pub fn linux_system_invocations(cert: &Path, store: &LinuxStore, root: bool) -> [Invocation; 2] {
+    let dest = format!("{}/{}", store.anchors, store.file_name);
+    let (program, args) = store.update;
+    [
+        Invocation::elevated(root, "cp", [cert.as_os_str(), dest.as_ref()]),
+        Invocation::elevated(root, program, args),
+    ]
+}
+
+/// Adds `cert` as a trusted CA to the NSS database at `nssdb`, which Chrome reads on Linux.
+#[must_use]
+pub fn nss_invocation(cert: &Path, nssdb: &Path) -> Invocation {
+    let mut db = OsString::from("sql:");
+    db.push(nssdb);
+    Invocation::new(
+        "certutil",
+        [
+            OsString::from("-d"),
+            db,
+            "-A".into(),
+            "-t".into(),
+            "C,,".into(),
+            "-n".into(),
+            "roxy".into(),
+            "-i".into(),
+            cert.into(),
+        ],
+    )
+}
+
+fn on_path(program: &str) -> bool {
+    std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(program).is_file()))
+}
+
+fn is_root() -> bool {
+    Invocation::new("id", ["-u"])
+        .run()
+        .is_ok_and(|uid| uid.trim() == "0")
+}
+
+fn trust_linux(cert: &Path) -> Result<()> {
+    let mut trusted = if let Some(store) = linux_store(Path::is_dir) {
+        for invocation in linux_system_invocations(cert, store, is_root()) {
+            invocation.run()?;
+        }
+        tracing::info!("added to the system trust store in {}", store.anchors);
+        true
+    } else {
+        tracing::warn!("no known system CA directory found, skipping the system trust store");
+        false
+    };
+    if let Some(nssdb) = dirs::home_dir()
+        .map(|h| h.join(".pki/nssdb"))
+        .filter(|d| d.is_dir())
+    {
+        if on_path("certutil") {
+            nss_invocation(cert, &nssdb).run()?;
+            tracing::info!("added to the NSS database in {}", nssdb.display());
+            trusted = true;
+        } else {
+            tracing::warn!(
+                "install certutil (libnss3-tools or nss-tools) and rerun `roxy trust` to trust roxy in Chrome"
+            );
+        }
+    }
+    ensure!(trusted, "found no trust store to add the CA to");
+    Ok(())
 }
 
 /// Parses `networksetup -listallnetworkservices`, skipping disabled (`*`) services.
@@ -368,13 +506,23 @@ fn services() -> Result<Vec<String>> {
     Ok(services)
 }
 
-/// Adds the CA certificate at `cert` to the user's trust store.
+/// Adds the CA certificate at `cert` to the OS trust stores.
+///
+/// That is the login keychain on macOS, the user's root store on Windows, and on Linux the
+/// system store (through `sudo`) plus Chrome's NSS database when `certutil` is installed.
 ///
 /// # Errors
-/// Fails off macOS or when `security` fails.
+/// Fails on an unsupported OS or when a trust command fails.
 pub fn trust(cert: &Path) -> Result<()> {
-    require_macos("trust")?;
-    trust_invocation(cert, &login_keychain()?).run()?;
+    if cfg!(target_os = "macos") {
+        trust_invocation(cert, &login_keychain()?).run()?;
+    } else if cfg!(windows) {
+        windows_trust_invocation(cert).run()?;
+    } else if cfg!(target_os = "linux") {
+        trust_linux(cert)?;
+    } else {
+        bail!("`roxy trust` is not supported on this OS");
+    }
     Ok(())
 }
 
@@ -833,5 +981,85 @@ mod tests {
             ),
         ];
         assert_eq!(services_left_off(&settings, 8080), ["Wi-Fi"]);
+    }
+
+    #[test]
+    fn builds_windows_trust_command() {
+        let inv = windows_trust_invocation(Path::new(r"C:\roxy\ca.pem"));
+        assert_eq!(inv.program, "certutil");
+        assert_eq!(
+            args(&inv),
+            ["-user", "-addstore", "Root", r"C:\roxy\ca.pem"]
+        );
+    }
+
+    #[test]
+    fn picks_the_first_existing_linux_store() {
+        let debian = linux_store(|p| p == Path::new("/usr/local/share/ca-certificates"));
+        assert_eq!(debian, Some(&LINUX_STORES[1]));
+        let fedora_and_debian = linux_store(|p| {
+            p == Path::new("/usr/local/share/ca-certificates")
+                || p == Path::new("/etc/pki/ca-trust/source/anchors")
+        });
+        assert_eq!(fedora_and_debian, Some(&LINUX_STORES[0]));
+        assert_eq!(linux_store(|_| false), None);
+    }
+
+    #[test]
+    fn builds_linux_system_commands_through_sudo() {
+        let cert = Path::new("/home/u/.local/share/roxy/ca.pem");
+        let [copy, update] = linux_system_invocations(cert, &LINUX_STORES[1], false);
+        assert_eq!(copy.program, "sudo");
+        assert_eq!(
+            args(&copy),
+            [
+                "cp",
+                "/home/u/.local/share/roxy/ca.pem",
+                "/usr/local/share/ca-certificates/roxy.crt"
+            ]
+        );
+        assert_eq!(update.program, "sudo");
+        assert_eq!(args(&update), ["update-ca-certificates"]);
+
+        let [_, update] = linux_system_invocations(cert, &LINUX_STORES[0], false);
+        assert_eq!(args(&update), ["update-ca-trust", "extract"]);
+        let [_, update] = linux_system_invocations(cert, &LINUX_STORES[2], false);
+        assert_eq!(args(&update), ["trust", "extract-compat"]);
+    }
+
+    #[test]
+    fn builds_linux_system_commands_as_root() {
+        let cert = Path::new("/root/.local/share/roxy/ca.pem");
+        let [copy, update] = linux_system_invocations(cert, &LINUX_STORES[0], true);
+        assert_eq!(copy.program, "cp");
+        assert_eq!(
+            args(&copy),
+            [
+                "/root/.local/share/roxy/ca.pem",
+                "/etc/pki/ca-trust/source/anchors/roxy.pem"
+            ]
+        );
+        assert_eq!(update.program, "update-ca-trust");
+        assert_eq!(args(&update), ["extract"]);
+    }
+
+    #[test]
+    fn builds_nss_command() {
+        let inv = nss_invocation(Path::new("/c/ca.pem"), Path::new("/home/u/.pki/nssdb"));
+        assert_eq!(inv.program, "certutil");
+        assert_eq!(
+            args(&inv),
+            [
+                "-d",
+                "sql:/home/u/.pki/nssdb",
+                "-A",
+                "-t",
+                "C,,",
+                "-n",
+                "roxy",
+                "-i",
+                "/c/ca.pem"
+            ]
+        );
     }
 }

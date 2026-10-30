@@ -6,11 +6,27 @@ on:
 jobs:
   release:
     name: ${{ matrix.target }}
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        target: [aarch64-apple-darwin]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
     permissions:
       contents: write
     steps:
@@ -32,10 +48,21 @@ jobs:
         with:
           target: ${{ matrix.target }}
 
+      - name: Configure musl build dependencies
+        if: endsWith(matrix.target, '-linux-musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Configure aarch64 musl linker
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=-Clink-arg=-lgcc" >> "$GITHUB_ENV"
+
       - name: Build binary
         run: cargo build --release --locked --target ${{ matrix.target }} --color=always --verbose
 
       - name: Package
+        if: runner.os != 'Windows'
         run: >
           tar -cv
           LICENSE README.md
@@ -44,13 +71,24 @@ jobs:
           -C target/${{ matrix.target }}/release/ roxy
           | gzip --best > '${{ env.ARTIFACT_NAME }}.tar.gz'
 
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/roxy.exe .
+          7z a '${{ env.ARTIFACT_NAME }}.zip' LICENSE README.md man contrib/completions roxy.exe
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
-          path: "*.tar.gz"
+          path: |
+            *.tar.gz
+            *.zip
 
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
-          files: "*.tar.gz"
+          files: |
+            *.tar.gz
+            *.zip

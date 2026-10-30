@@ -62,12 +62,23 @@ Metrics (requests, responses, time spent in hooks) are logged every minute while
 
 ### HTTPS
 
-On first run roxy creates a CA in your per-user data directory (`~/Library/Application Support/roxy` on macOS, `~/.local/share/roxy` on Linux) and mints a certificate per intercepted host. HTTP/1.1 and HTTP/2 are negotiated with ALPN. Upstream certificates are always verified.
+On first run roxy creates a CA in your per-user data directory and mints a certificate per intercepted host. HTTP/1.1 and HTTP/2 are negotiated with ALPN. Upstream certificates are always verified.
+
+| OS | CA directory |
+| --- | --- |
+| macOS | `~/Library/Application Support/roxy` |
+| Linux | `$XDG_DATA_HOME/roxy` or `~/.local/share/roxy` |
+| Windows | `%APPDATA%\roxy` |
+
+`roxy trust` adds the CA (`ca.pem` in that directory) to the trust store so clients accept roxy's certificates:
+
+```sh
+roxy trust
+```
 
 macOS only:
 
 ```sh
-roxy trust                          # trust the CA in your login keychain
 roxy register --port 8080           # set the system web + secure web proxy
 roxy unregister                     # clear it
 roxy run script.js --auto-register  # register on start, unregister on exit
