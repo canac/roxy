@@ -67,6 +67,7 @@ jobs:
           tar -cv
           LICENSE README.md
           man/
+          skills/
           -C contrib/ completions/ -C ../
           -C target/${{ matrix.target }}/release/ roxy
           | gzip --best > '${{ env.ARTIFACT_NAME }}.tar.gz'
@@ -76,7 +77,7 @@ jobs:
         shell: bash
         run: |
           cp target/${{ matrix.target }}/release/roxy.exe .
-          7z a '${{ env.ARTIFACT_NAME }}.zip' LICENSE README.md man contrib/completions roxy.exe
+          7z a '${{ env.ARTIFACT_NAME }}.zip' LICENSE README.md man skills contrib/completions roxy.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -92,3 +93,59 @@ jobs:
           files: |
             *.tar.gz
             *.zip
+
+  packslip:
+    name: Sign packslip
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Sign release
+        id: packslip
+        uses: jdx/packslip@v1
+        with:
+          download: roxy-*.tar.gz roxy-*.zip
+          bin: roxy
+          upload: false
+          resources: |
+            completion/bash=archive:completions/roxy.bash
+            completion/zsh=archive:completions/_roxy
+            completion/fish=archive:completions/roxy.fish
+            completion/powershell=archive:completions/_roxy.ps1
+            completion/elvish=archive:completions/roxy.elv
+            man=archive:man/man1/roxy.1
+            man=archive:man/man1/roxy-register.1
+            man=archive:man/man1/roxy-run.1
+            man=archive:man/man1/roxy-trust.1
+            man=archive:man/man1/roxy-unregister.1
+            skill/roxy=archive:skills/roxy
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: packslip-bundle
+          path: ${{ steps.packslip.outputs.bundle }}
+          if-no-files-found: error
+
+  publish-packslip:
+    name: Publish packslip
+    needs: packslip
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download bundle artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: packslip-bundle
+          path: packslip
+
+      - name: Upload bundle to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release upload "$GITHUB_REF_NAME" packslip/packslip.sigstore.json
+          --repo "$GITHUB_REPOSITORY" --clobber
