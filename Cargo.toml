@@ -32,7 +32,7 @@ rlimit = "0.11.0"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
 rustls-native-certs = "0.8"
 serde = { version = "1", features = ["derive"] }
-sys_traits = { version = "0.1.28", features = ["real", "libc"] }
+sys_traits = { version = "0.1.28", features = ["real", "libc", "winapi"] }
 terminal_size = "0.4"
 thiserror = "2"
 time = "0.3"

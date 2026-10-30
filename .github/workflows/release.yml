@@ -6,11 +6,21 @@ on:
 jobs:
   release:
     name: ${{ matrix.target }}
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        target: [aarch64-apple-darwin]
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: aarch64-pc-windows-msvc
+            os: windows-11-arm
     permissions:
       contents: write
     steps:
@@ -36,6 +46,7 @@ jobs:
         run: cargo build --release --locked --target ${{ matrix.target }} --color=always --verbose
 
       - name: Package
+        if: runner.os != 'Windows'
         run: >
           tar -cv
           LICENSE README.md
@@ -44,13 +55,24 @@ jobs:
           -C target/${{ matrix.target }}/release/ roxy
           | gzip --best > '${{ env.ARTIFACT_NAME }}.tar.gz'
 
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/roxy.exe .
+          7z a '${{ env.ARTIFACT_NAME }}.zip' LICENSE README.md man contrib/completions roxy.exe
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
-          path: "*.tar.gz"
+          path: |
+            *.tar.gz
+            *.zip
 
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
-          files: "*.tar.gz"
+          files: |
+            *.tar.gz
+            *.zip

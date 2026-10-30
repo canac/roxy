@@ -1,12 +1,15 @@
 #![allow(clippy::unwrap_used)]
 
+#[cfg(unix)]
 mod common;
 
-use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::process::Command;
+#[cfg(unix)]
+use std::{process::Stdio, time::Duration};
 
 const BIN: &str = env!("CARGO_BIN_EXE_roxy");
 
+#[cfg(unix)]
 fn free_port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -31,6 +34,7 @@ fn help_lists_every_subcommand() {
     }
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn runs_on_port_from_env_and_logs_metrics_on_shutdown() {
     let up = common::upstream().await;
@@ -46,6 +50,7 @@ async fn runs_on_port_from_env_and_logs_metrics_on_shutdown() {
         .args(["run", script.to_str().unwrap()])
         .env("ROXY_PORT", port.to_string())
         .env("HOME", home.path())
+        .env_remove("XDG_DATA_HOME")
         .env("ROXY_LOG", "info")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -74,15 +79,15 @@ async fn runs_on_port_from_env_and_logs_metrics_on_shutdown() {
     let logs = String::from_utf8_lossy(&out.stdout);
     assert!(logs.contains("final metrics: requests="), "{logs}");
     assert!(logs.contains("seen { n: 1 }"), "{logs}");
-    if cfg!(target_os = "macos") {
-        assert!(
-            home.path()
-                .join("Library/Application Support/roxy/ca.pem")
-                .exists()
-        );
-    }
+    let data_dir = if cfg!(target_os = "macos") {
+        "Library/Application Support"
+    } else {
+        ".local/share"
+    };
+    assert!(home.path().join(data_dir).join("roxy/ca.pem").exists());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn raises_a_low_open_file_limit() {
     let home = tempfile::tempdir().unwrap();

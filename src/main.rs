@@ -83,6 +83,7 @@ async fn run(config: proxy::Config, auto_register: bool) -> Result<()> {
         Ok(limit) => tracing::debug!("open file limit is {limit}"),
         Err(e) => tracing::warn!("cannot raise the open file limit: {e}"),
     }
+    #[cfg(unix)]
     if config.live_metrics {
         tokio::spawn(redraw_on_resize());
     }
@@ -133,16 +134,14 @@ fn claim_system_proxy(port: u16) -> Result<Option<File>> {
     Ok(lock)
 }
 
+#[cfg(unix)]
 async fn redraw_on_resize() {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{SignalKind, signal};
-        let Ok(mut resized) = signal(SignalKind::window_change()) else {
-            return;
-        };
-        while resized.recv().await.is_some() {
-            status::redraw();
-        }
+    use tokio::signal::unix::{SignalKind, signal};
+    let Ok(mut resized) = signal(SignalKind::window_change()) else {
+        return;
+    };
+    while resized.recv().await.is_some() {
+        status::redraw();
     }
 }
 

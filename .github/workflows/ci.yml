@@ -3,8 +3,12 @@ on: [push, pull_request]
 
 jobs:
   test:
-    name: Test
-    runs-on: macos-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -21,8 +25,12 @@ jobs:
       - run: cargo fmt --all -- --check
 
   clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
+    name: Clippy (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

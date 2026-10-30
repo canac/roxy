@@ -62,12 +62,27 @@ Metrics (requests, responses, time spent in hooks) are logged every minute while
 
 ### HTTPS
 
-On first run roxy creates a CA in your per-user data directory (`~/Library/Application Support/roxy` on macOS, `~/.local/share/roxy` on Linux) and mints a certificate per intercepted host. HTTP/1.1 and HTTP/2 are negotiated with ALPN. Upstream certificates are always verified.
+On first run roxy creates a CA in your per-user data directory and mints a certificate per intercepted host. HTTP/1.1 and HTTP/2 are negotiated with ALPN. Upstream certificates are always verified.
+
+| OS | CA directory |
+| --- | --- |
+| macOS | `~/Library/Application Support/roxy` |
+| Linux | `$XDG_DATA_HOME/roxy` or `~/.local/share/roxy` |
+| Windows | `%APPDATA%\roxy` |
+
+`roxy trust` adds the CA (`ca.pem` in that directory) to the trust store so clients accept roxy's certificates:
+
+```sh
+roxy trust
+```
+
+- macOS: your login keychain.
+- Windows: the current user's trusted root store (no admin needed, Windows asks you to confirm, so run it from a desktop session rather than over SSH). roxy's certificates have no revocation info, so Windows' `curl.exe` needs `--ssl-no-revoke`.
+- Linux: the system store, using `sudo` to copy the CA and run `update-ca-trust` (Fedora, RHEL), `update-ca-certificates` (Debian, Ubuntu) or `trust extract-compat` (Arch). If `~/.pki/nssdb` exists, it is also added there for Chrome, which needs `certutil` (`libnss3-tools` or `nss-tools`). Firefox keeps its own store, so import the CA there by hand.
 
 macOS only:
 
 ```sh
-roxy trust                          # trust the CA in your login keychain
 roxy register --port 8080           # set the system web + secure web proxy
 roxy unregister                     # clear it
 roxy run script.js --auto-register  # register on start, unregister on exit
