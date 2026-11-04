@@ -25,10 +25,7 @@ roxy run hooks.js --port 0   # logs "roxy listening on http://127.0.0.1:<port>"
 
 - curl: `curl --proxy http://localhost:<port> https://example.com/`
 - Most CLIs: set `HTTP_PROXY` and `HTTPS_PROXY` to `http://localhost:<port>`.
-- node: also set `NODE_USE_ENV_PROXY=1` and `NODE_EXTRA_CA_CERTS` to roxy's CA:
-  - macOS: `~/Library/Application Support/roxy/ca.pem`
-  - Linux: `${XDG_DATA_HOME:-~/.local/share}/roxy/ca.pem`
-  - Windows: `%APPDATA%\roxy\ca.pem`
+- node: also set `NODE_USE_ENV_PROXY=1` and `NODE_USE_SYSTEM_CA=1` (requires `roxy trust`).
 - Chrome: a separate instance with its own `--user-data-dir` and `--proxy-server=http://localhost:<port>`.
 
 ## Examples
