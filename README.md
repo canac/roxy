@@ -2,17 +2,32 @@
 
 A scriptable man-in-the-middle HTTP(S) proxy, like mitmproxy, scripted in JavaScript with web-standard `Request` / `Response` APIs. It runs on Deno's crates (`deno_core`, `deno_web`, `deno_fetch`) in a single V8 isolate.
 
+## Installation
+
+### Homebrew (macOS)
+
+```sh
+brew install canac/tap/roxy
+npx skills add canac/roxy  # optionally install the agent skill
+```
+
+### mise
+
+```sh
+mise settings set skills.auto_sync true  # optionally install agent skills
+mise use --global packslip:github.com/canac/roxy
+```
+
 ## Usage
 
 ```sh
-cargo install --path .
 roxy run script.js --port 8080        # or ROXY_PORT=8080 roxy run script.js
 ```
 
 roxy always binds to `127.0.0.1`. Point a client at it as an HTTP proxy:
 
 ```sh
-curl -x http://127.0.0.1:8080 https://example.com/
+curl --proxy http://127.0.0.1:8080 https://example.com/
 ```
 
 ### Scripts
@@ -87,14 +102,6 @@ roxy run script.js --auto-register  # register on start, unregister on exit
 Registering also adds `localhost`, `*.localhost`, `127.0.0.1` and `::1` to the proxy bypass list so local servers stay unproxied.
 
 Only the first `--auto-register` instance sets the system proxy. Later ones log the `roxy register --port <port>` command to point it at themselves instead. On exit, an instance only clears system proxy settings that still point at its own port. `roxy unregister` always clears the system proxy, which also fixes things after a crash.
-
-## Agent Skills
-
-roxy ships a skill that teaches coding agents to write and run roxy scripts:
-
-```sh
-npx skills add canac/roxy
-```
 
 ## Development
 
